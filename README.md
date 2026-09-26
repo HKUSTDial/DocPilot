@@ -2,8 +2,6 @@
 
 DocPilot is an agentic document-understanding framework for multimodal document question answering. It couples an LLM policy with document tools for page navigation, evidence extraction, visual focusing, symbolic solving, answer generation, and answer verification.
 
-This directory is a sanitized ICLR artifact snapshot. It keeps the framework, OCR/document preprocessing pipeline, and training-data conversion scripts, while excluding private credentials, local absolute paths, generated datasets, logs, page images, and model checkpoints.
-
 ## Contents
 
 ```text
