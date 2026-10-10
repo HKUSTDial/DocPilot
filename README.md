@@ -124,7 +124,6 @@ docpilot/
 DocPilot requires Python 3.11 or newer.
 
 ```bash
-cd guides/iclr/docpilot
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -217,7 +216,7 @@ npm ci
 cd ../../..
 ```
 
-Start both services from the artifact root:
+Start both services from the project root:
 
 ```bash
 ./demo/chat/start.sh
