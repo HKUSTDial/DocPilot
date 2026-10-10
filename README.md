@@ -149,7 +149,6 @@ llm:
 - [`configs/docpilot-vllm.yaml`](./configs/docpilot-vllm.yaml) uses the action-tag protocol emitted by a trained DocPilot model served through vLLM.
 - [`app/llm/.env`](./app/llm/.env) contains official provider endpoints for the provider-specific helper modules; every credential value is empty.
 
-Do not commit populated credentials.
 
 ## 🚀 Quick Start
 
