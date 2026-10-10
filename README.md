@@ -226,7 +226,7 @@ Open `http://127.0.0.1:5173`. The API listens on `http://127.0.0.1:8008`.
 - **Default agent** runs the DocPilot pipeline and preprocesses uploaded PDFs with MinerU.
 - **Chat agent** sends selected PDF pages, images, or text directly to a multimodal OpenAI-compatible model.
 
-Runtime uploads, OCR output, workspace state, and conversation history remain local under `demo/chat/backend/runs/` and `demo/chat/workspace/`. See the [demo documentation](./demo/chat/README.md) for configuration details.
+Runtime uploads, OCR output, workspace state, and conversation history remain local under `demo/chat/backend/runs/` and `demo/chat/workspace/`. See the [demo documentation](./demo/chat/README_ZH.md) for configuration details.
 
 ## 🤝 Acknowledgement
 
