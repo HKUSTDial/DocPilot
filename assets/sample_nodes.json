@@ -1,0 +1,50 @@
+[
+  {
+    "node_id": "doc1-sec1",
+    "doc_id": "doc1",
+    "page": 1,
+    "node_type": "section",
+    "modality": "text",
+    "title": "FY2015 Revenue Overview",
+    "text": "The company reported revenue of 120 million dollars in FY2015.",
+    "summary": "",
+    "content": null,
+    "bbox": null,
+    "parent_id": null,
+    "children": [],
+    "metadata": {}
+  },
+  {
+    "node_id": "doc1-table1",
+    "doc_id": "doc1",
+    "page": 2,
+    "node_type": "table",
+    "modality": "table",
+    "title": "Consolidated Statements",
+    "text": "Revenue 2015 120; Revenue 2014 100.",
+    "summary": "",
+    "content": {
+      "Revenue 2015": 120,
+      "Revenue 2014": 100
+    },
+    "bbox": null,
+    "parent_id": null,
+    "children": [],
+    "metadata": {}
+  },
+  {
+    "node_id": "doc1-para2",
+    "doc_id": "doc1",
+    "page": 3,
+    "node_type": "paragraph",
+    "modality": "text",
+    "title": "Marketing cost note",
+    "text": "Advertising expense in FY2015 was 12 million dollars.",
+    "summary": "",
+    "content": null,
+    "bbox": null,
+    "parent_id": null,
+    "children": [],
+    "metadata": {}
+  }
+]
