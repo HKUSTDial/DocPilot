@@ -1,2 +1,0 @@
-"""Pipeline packages for DocPilot."""
-
