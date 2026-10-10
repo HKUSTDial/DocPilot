@@ -1,20 +1,17 @@
 <div align="center">
 
-<a href="./assets/icon.pdf">
-  <img src="./assets/icon.png" alt="DocPilot logo" width="112" />
-</a>
-
-<h1>DocPilot: Interactive Agent Orchestration and Training for Long Visual Document Understanding</h1>
+<h1>
+  <img src="./assets/icon.png" alt="DocPilot logo" width="64" align="absmiddle" />
+  DocPilot: Interactive Agent Orchestration and Training for Long Visual Document Understanding
+</h1>
 
 ![Paper](https://img.shields.io/badge/Paper-ICLR%202027%20Under%20Review-4B5563.svg)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB.svg)](https://www.python.org/)
 [![Interface](https://img.shields.io/badge/Interface-React%20%2B%20FastAPI-0F766E.svg)](./demo/chat/)
 
-**Anonymous code artifact for the ICLR 2027 submission**
 
 </div>
 
-## 👀 Overview
 
 <p align="center">
   <img src="assets/results.png" alt="DocPilot performance on MMLongBench-Doc." width="100%" />
@@ -232,3 +229,10 @@ Open `http://127.0.0.1:5173`. The API listens on `http://127.0.0.1:8008`.
 - **Chat agent** sends selected PDF pages, images, or text directly to a multimodal OpenAI-compatible model.
 
 Runtime uploads, OCR output, workspace state, and conversation history remain local under `demo/chat/backend/runs/` and `demo/chat/workspace/`. See the [demo documentation](./demo/chat/README.md) for configuration details.
+
+## 🤝 Acknowledgement
+
+- **Training Framework:** [ms-swift](https://github.com/modelscope/ms-swift)
+- **Sources of Training Data:**
+  - **Single-ability:** [DocSeeker](https://github.com/yh-hust/DocSeeker), [HotpotQA](https://hotpotqa.github.io/), [FinQA](https://github.com/czyssrs/FinQA), [ChartQAPro](https://github.com/vis-nlp/ChartQAPro), and [InfographicVQA](https://site.docvqa.org/datasets/infographicvqa)
+  - **Multi-ability:** [LongDocURL](https://github.com/dengc2023/LongDocURL), [DUDE](https://github.com/duchallenge-team/dude), [MADQA](https://huggingface.co/datasets/OxRML/MADQA), and [MMDocRAG](https://github.com/MMDocRAG/MMDocRAG)
