@@ -149,6 +149,16 @@ llm:
 - [`configs/docpilot-vllm.yaml`](./configs/docpilot-vllm.yaml) uses the action-tag protocol emitted by a trained DocPilot model served through vLLM.
 - [`app/llm/.env`](./app/llm/.env) contains official provider endpoints for the provider-specific helper modules; every credential value is empty.
 
+Before preprocessing documents or starting the interactive demo, download the MinerU models once:
+
+```bash
+mineru-models-download \
+  --tier standard \
+  --source modelscope \
+  --verbose
+```
+
+The models are cached under `~/.mineru/models/` and reused by subsequent runs.
 
 ## 🚀 Quick Start
 

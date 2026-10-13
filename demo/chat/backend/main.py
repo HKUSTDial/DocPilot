@@ -560,11 +560,25 @@ def initial_processing_status(session_id: str, suffix: str) -> str:
 
 
 def build_mineru_command(file_path: Path, output_dir: Path) -> list[str]:
+    configured_executable = os.environ.get("DOCPILOT_MINERU_EXECUTABLE")
+    local_kit = PROJECT_ROOT / ".venv" / "bin" / "mineru-kit"
+    mineru_kit = str(local_kit) if local_kit.is_file() else shutil.which("mineru-kit")
     executable = (
-        os.environ.get("DOCPILOT_MINERU_EXECUTABLE")
+        configured_executable
+        or mineru_kit
         or shutil.which("mineru")
         or str(PROJECT_ROOT / ".venv" / "bin" / "mineru")
     )
+    if Path(executable).name == "mineru-kit":
+        return [
+            executable,
+            "parse",
+            str(file_path.resolve()),
+            "-o",
+            str(output_dir.resolve()),
+            "-f",
+            "markdown",
+        ]
     cmd = [
         executable,
         "-p",
