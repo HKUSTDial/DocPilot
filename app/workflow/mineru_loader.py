@@ -20,19 +20,46 @@ def load_nodes_from_mineru_output(
     auto_dir = output_dir / output_dir.name / "auto" if (output_dir / output_dir.name / "auto").exists() else output_dir
     content_v2 = auto_dir / f"{auto_dir.parent.name}_content_list_v2.json"
     markdown_path = auto_dir / f"{auto_dir.parent.name}.md"
+    is_middle_json = False
 
     if not content_v2.exists():
         candidates = list(auto_dir.glob("*_content_list_v2.json"))
-        if not candidates:
-            raise FileNotFoundError(f"No *_content_list_v2.json found under {auto_dir}")
-        content_v2 = candidates[0]
+        if candidates:
+            content_v2 = candidates[0]
+        else:
+            middle_json = auto_dir / "middle_json.json"
+            if not middle_json.exists():
+                candidates = [
+                    path
+                    for path in auto_dir.glob("*.json")
+                    if path.name not in {"structured_content.json", "model_output.json"}
+                ]
+                middle_json = next(
+                    (
+                        path
+                        for path in candidates
+                        if json.loads(path.read_text(encoding="utf-8")).get("schema") == "docvortex.middle"
+                    ),
+                    middle_json,
+                )
+            if not middle_json.exists():
+                raise FileNotFoundError(f"No MinerU content-list or middle JSON found under {auto_dir}")
+            content_v2 = middle_json
+            is_middle_json = True
     if not markdown_path.exists():
         md_candidates = list(auto_dir.glob("*.md"))
         markdown_path = md_candidates[0] if md_candidates else markdown_path
 
-    data = json.loads(content_v2.read_text(encoding="utf-8"))
+    if is_middle_json:
+        from mineru.parser.base import ParseResult
+        from mineru.render.content_list_v2 import render_content_list_v2
+
+        result = ParseResult.from_json(content_v2.read_text(encoding="utf-8"))
+        data = render_content_list_v2(result.middle_json)
+    else:
+        data = json.loads(content_v2.read_text(encoding="utf-8"))
     doc_id = doc_id or content_v2.stem.removesuffix("_content_list_v2")
-    markdown_pages = _load_markdown_pages(markdown_path) if markdown_path.exists() else {}
+    markdown_pages = _load_markdown_pages(markdown_path) if markdown_path.exists() and not is_middle_json else {}
     page_id_by_index = _load_page_id_by_index(auto_dir, len(data))
 
     nodes: list[DocumentNode] = []
@@ -323,6 +350,7 @@ def _resolve_page_screenshot_path(auto_dir: Path | None, page_no: int) -> str | 
     candidates = [
         auto_dir.parent / "screenshots" / f"page{page_no}.png",
         auto_dir / "screenshots" / f"page{page_no}.png",
+        auto_dir / "images" / "screenshots" / f"page{page_no}.png",
     ]
     for candidate in candidates:
         candidate = candidate.resolve()

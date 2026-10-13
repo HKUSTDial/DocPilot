@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -577,7 +578,7 @@ def build_mineru_command(file_path: Path, output_dir: Path) -> list[str]:
             "-o",
             str(output_dir.resolve()),
             "-f",
-            "markdown",
+            "zip",
         ]
     cmd = [
         executable,
@@ -590,6 +591,39 @@ def build_mineru_command(file_path: Path, output_dir: Path) -> list[str]:
     if backend:
         cmd.extend(["-b", backend])
     return cmd
+
+
+def extract_mineru_zip(output_dir: Path, doc_id: str) -> None:
+    archive_path = output_dir / f"{doc_id}.zip"
+    if not archive_path.is_file():
+        raise FileNotFoundError(f"MinerU zip output not found: {archive_path}")
+    root = output_dir.resolve()
+    with zipfile.ZipFile(archive_path) as archive:
+        for member in archive.infolist():
+            destination = (root / member.filename).resolve()
+            if destination != root and root not in destination.parents:
+                raise ValueError(f"Unsafe path in MinerU zip: {member.filename}")
+        archive.extractall(root)
+
+
+def build_mineru_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["MINERU_MODEL_SOURCE"] = os.environ.get("DOCPILOT_MINERU_MODEL_SOURCE", "modelscope")
+    path_entries = [str(PROJECT_ROOT / ".venv" / "bin")]
+
+    local_nvccs = sorted(
+        (PROJECT_ROOT / ".venv" / "lib").glob("python*/site-packages/nvidia/cu*/bin/nvcc"),
+        reverse=True,
+    )
+    if local_nvccs:
+        cuda_root = local_nvccs[0].parent.parent
+        env["CUDA_HOME"] = str(cuda_root)
+        path_entries.append(str(cuda_root / "bin"))
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            (str(cuda_root / "lib"), env.get("LD_LIBRARY_PATH", ""))
+        )
+    env["PATH"] = os.pathsep.join((*path_entries, env.get("PATH", "")))
+    return env
 
 
 def update_file_record(
@@ -660,14 +694,21 @@ def bootstrap_session_files(session_id: str) -> None:
         if (
             session_uses_mineru(session_id)
             and extension in PROCESSABLE_PDF_EXTENSIONS
-            and status in {None, "queued"}
+            and status in {None, "queued", "ready"}
         ):
             mineru_dir = record.get("mineru_output_dir")
-            has_artifacts = bool(isinstance(record.get("artifacts"), dict) and (
-                record["artifacts"].get("json_files") or record["artifacts"].get("markdown_files")
-            ))
-            if mineru_dir and Path(str(mineru_dir)).exists() and has_artifacts:
-                update_file_record(session_id, file_name, processing_status="ready", processing_error=None)
+            if mineru_dir and Path(str(mineru_dir)).exists():
+                try:
+                    load_nodes_from_mineru_output(mineru_dir, doc_id=str(record.get("doc_id") or Path(file_name).stem))
+                except (FileNotFoundError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                    update_file_record(
+                        session_id,
+                        file_name,
+                        processing_status="failed",
+                        processing_error=f"MinerU output cannot be loaded: {exc}",
+                    )
+                else:
+                    update_file_record(session_id, file_name, processing_status="ready", processing_error=None)
             elif status != "processing":
                 spawn_preprocess(session_id, file_name)
 
@@ -706,14 +747,12 @@ def preprocess_upload(session_id: str, file_name: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     update_file_record(session_id, file_name, processing_status="processing", mineru_output_dir=str(output_dir))
     cmd = build_mineru_command(file_path, output_dir)
-    env = os.environ.copy()
-    env["MINERU_MODEL_SOURCE"] = os.environ.get("DOCPILOT_MINERU_MODEL_SOURCE", "modelscope")
 
     try:
         completed = subprocess.run(
             cmd,
             cwd=str(PROJECT_ROOT.resolve()),
-            env=env,
+            env=build_mineru_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -723,7 +762,16 @@ def preprocess_upload(session_id: str, file_name: str) -> None:
         return
 
     artifacts = _discover_mineru_artifacts(output_dir)
-    if completed.returncode == 0 and (artifacts.get("json_files") or artifacts.get("markdown_files")):
+    load_error: Exception | None = None
+    if completed.returncode == 0:
+        try:
+            if Path(cmd[0]).name == "mineru-kit":
+                extract_mineru_zip(output_dir, doc_id)
+                artifacts = _discover_mineru_artifacts(output_dir)
+            load_nodes_from_mineru_output(output_dir, doc_id=doc_id)
+        except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError, ValueError, zipfile.BadZipFile) as exc:
+            load_error = exc
+    if completed.returncode == 0 and load_error is None:
         screenshot_dir = _ensure_page_screenshots(output_dir, input_path=file_path.resolve(), doc_id=doc_id)
         if screenshot_dir:
             artifacts["screenshot_dir"] = str(screenshot_dir)
@@ -738,7 +786,7 @@ def preprocess_upload(session_id: str, file_name: str) -> None:
     else:
         stderr_tail = (completed.stderr or "")[-2000:]
         stdout_tail = (completed.stdout or "")[-2000:]
-        reason = stderr_tail or stdout_tail or "MinerU produced no markdown/json artifacts"
+        reason = str(load_error) if load_error else stderr_tail or stdout_tail or "MinerU produced no loadable output"
         update_file_record(
             session_id,
             file_name,

@@ -473,6 +473,7 @@ export default function App() {
   const workspaceImportRef = useRef<HTMLDivElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const searchRequestIdRef = useRef(0);
+  const modelDiscoveryRequestIdRef = useRef(0);
   const chatAbortControllerRef = useRef<AbortController | null>(null);
   const activeFileNameRef = useRef("");
   const historySyncRef = useRef<Promise<void>>(Promise.resolve());
@@ -902,10 +903,15 @@ export default function App() {
     }
   }
 
-  function loadPreset(provider: "vllm" | "custom") {
-    setErrorText("");
+  function invalidateDiscoveredModels() {
+    modelDiscoveryRequestIdRef.current += 1;
     setAvailableModels([]);
     setIsModelMenuOpen(false);
+  }
+
+  function loadPreset(provider: "vllm" | "custom") {
+    setErrorText("");
+    invalidateDiscoveredModels();
     setConfig({ ...PRESET_CONFIGS[provider] });
   }
 
@@ -916,11 +922,14 @@ export default function App() {
     }
 
     setErrorText("");
+    const requestId = ++modelDiscoveryRequestIdRef.current;
     try {
       const models = await discoverModels(config);
+      if (requestId !== modelDiscoveryRequestIdRef.current) return;
       setAvailableModels(models);
       setIsModelMenuOpen(models.length > 0);
     } catch (error) {
+      if (requestId !== modelDiscoveryRequestIdRef.current) return;
       setErrorText(String(error));
     }
   }
@@ -2597,9 +2606,10 @@ export default function App() {
                         <input
                           aria-label="Base URL"
                           value={config.base_url}
-                          onChange={(event) =>
-                            setConfig((current) => ({ ...current, base_url: event.target.value }))
-                          }
+                          onChange={(event) => {
+                            invalidateDiscoveredModels();
+                            setConfig((current) => ({ ...current, base_url: event.target.value }));
+                          }}
                           placeholder="http://127.0.0.1:8000/v1"
                         />
                       </div>
@@ -2608,9 +2618,10 @@ export default function App() {
                         <span>API Key</span>
                         <input
                           value={config.api_key}
-                          onChange={(event) =>
-                            setConfig((current) => ({ ...current, api_key: event.target.value }))
-                          }
+                          onChange={(event) => {
+                            invalidateDiscoveredModels();
+                            setConfig((current) => ({ ...current, api_key: event.target.value }));
+                          }}
                           placeholder="docpilot-local"
                           type="password"
                         />

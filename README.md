@@ -149,13 +149,38 @@ llm:
 - [`configs/docpilot-vllm.yaml`](./configs/docpilot-vllm.yaml) uses the action-tag protocol emitted by a trained DocPilot model served through vLLM.
 - [`app/llm/.env`](./app/llm/.env) contains official provider endpoints for the provider-specific helper modules; every credential value is empty.
 
-Before preprocessing documents or starting the interactive demo, download the MinerU models once:
+Before preprocessing documents or starting the interactive demo, download and verify the MinerU models for your runtime.
+
+For a CUDA GPU (recommended):
 
 ```bash
-mineru-models-download \
+mineru-kit models download \
   --tier standard \
+  --small-backend torch \
+  --vlm-engine vllm \
   --source modelscope \
   --verbose
+
+mineru-kit models verify \
+  --tier standard \
+  --small-backend torch \
+  --vlm-engine vllm
+```
+
+For CPU-only environments:
+
+```bash
+mineru-kit models download \
+  --tier standard \
+  --small-backend onnx \
+  --vlm-engine llama-cpp \
+  --source modelscope \
+  --verbose
+
+mineru-kit models verify \
+  --tier standard \
+  --small-backend onnx \
+  --vlm-engine llama-cpp
 ```
 
 The models are cached under `~/.mineru/models/` and reused by subsequent runs.
