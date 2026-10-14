@@ -2356,9 +2356,12 @@ export default function App() {
                                     {step.images.length ? (
                                       <div className="agent-step-images">
                                         {step.images.map((item) => {
-                                          const imageUrl = item.url.startsWith("/")
-                                            ? toAbsoluteUrl(item.url)
+                                          const imagePath = item.url.startsWith("/workspace/")
+                                            ? item.url.replace("/workspace/", "/api/workspace-images/")
                                             : item.url;
+                                          const imageUrl = imagePath.startsWith("/")
+                                            ? toAbsoluteUrl(imagePath)
+                                            : imagePath;
                                           return (
                                             <figure className="agent-step-image" key={item.url}>
                                               <a href={imageUrl} target="_blank" rel="noreferrer">

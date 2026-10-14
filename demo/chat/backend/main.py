@@ -388,6 +388,8 @@ def _workspace_image_payload(image_ref: str, session_id: str) -> dict[str, str] 
         return {"url": image_ref, "label": "Action image"}
     path = Path(image_ref).expanduser().resolve()
     session_root = (WORKSPACE_ROOT / normalize_session_id(session_id)).resolve()
+    if session_root.parent != WORKSPACE_ROOT.resolve():
+        return None
     try:
         relative = path.relative_to(session_root)
     except ValueError:
@@ -399,7 +401,7 @@ def _workspace_image_payload(image_ref: str, session_id: str) -> dict[str, str] 
         url = f"/api/action-images/{quote(relative.as_posix(), safe='/')}"
     else:
         workspace_relative = Path(normalize_session_id(session_id)) / relative
-        url = f"/workspace/{quote(workspace_relative.as_posix(), safe='/')}"
+        url = f"/api/workspace-images/{quote(workspace_relative.as_posix(), safe='/')}"
     if not path.is_file() or path.suffix.lower() not in ACTION_IMAGE_EXTENSIONS:
         return None
     return {
@@ -1205,14 +1207,18 @@ def delete_conversation_history(conversation_id: str) -> ConversationHistoryStor
 
 
 app = FastAPI(title="DocPilot Chat Demo", version="0.2.0")
+cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("DOCPILOT_CORS_ORIGINS", "*").split(",")
+    if origin.strip()
+] or ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/workspace", StaticFiles(directory=WORKSPACE_ROOT), name="workspace")
 app.mount("/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
 
 
@@ -1287,6 +1293,22 @@ async def get_action_image(image_path: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="Action image not found") from exc
     if not target.is_file() or target.suffix.lower() not in ACTION_IMAGE_EXTENSIONS:
         raise HTTPException(status_code=404, detail="Action image not found")
+    return FileResponse(target)
+
+
+@app.get("/api/workspace-images/{session_id}/{image_path:path}")
+async def get_workspace_image(session_id: str, image_path: str) -> FileResponse:
+    workspace_root = WORKSPACE_ROOT.resolve()
+    session_root = (workspace_root / session_id).resolve()
+    if session_root.parent != workspace_root:
+        raise HTTPException(status_code=404, detail="Workspace image not found")
+    target = (session_root / image_path).resolve()
+    try:
+        target.relative_to(session_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Workspace image not found") from exc
+    if not target.is_file() or target.suffix.lower() not in ACTION_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=404, detail="Workspace image not found")
     return FileResponse(target)
 
 
