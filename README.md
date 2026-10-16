@@ -5,7 +5,7 @@
   DocPilot: Interactive Agent Orchestration and Training for Long Visual Document Understanding
 </h1>
 
-![Paper](https://img.shields.io/badge/Paper-ICLR%202027%20Under%20Review-4B5563.svg)
+[![arXiv](https://img.shields.io/badge/arXiv-2610.21327-B31B1B.svg)](https://arxiv.org/abs/2610.21327)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB.svg)](https://www.python.org/)
 [![Interface](https://img.shields.io/badge/Interface-React%20%2B%20FastAPI-0F766E.svg)](./demo/chat/)
 
