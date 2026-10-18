@@ -6,6 +6,7 @@
 </h1>
 
 [![arXiv](https://img.shields.io/badge/arXiv-2610.21327-B31B1B.svg)](https://arxiv.org/abs/2610.21327)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-FFD21E.svg)](https://huggingface.co/SetonLiang2/DocPilot)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB.svg)](https://www.python.org/)
 [![Interface](https://img.shields.io/badge/Interface-React%20%2B%20FastAPI-0F766E.svg)](./demo/chat/)
 
