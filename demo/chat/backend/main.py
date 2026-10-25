@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import mimetypes
 import os
 import re
@@ -546,6 +547,50 @@ def read_document_snippet(file_path: Path, limit: int = 12000) -> str:
 
 def mineru_output_dir_for(doc_id: str) -> Path:
     return BACKEND_RUNS_ROOT / "mineru" / doc_id
+
+
+def parsed_artifact_path(session_id: str, file_name: str, artifact: str) -> Path:
+    session_root = (WORKSPACE_ROOT / normalize_session_id(session_id)).resolve()
+    if session_root.parent != WORKSPACE_ROOT.resolve():
+        raise HTTPException(status_code=404, detail="Document not found")
+    if Path(file_name).name != file_name or is_internal_workspace_file(Path(file_name)):
+        raise HTTPException(status_code=404, detail="Document not found")
+    record = get_file_record(session_id, file_name)
+    if not record or Path(file_name).suffix.lower() != ".pdf":
+        raise HTTPException(status_code=404, detail="Document not found")
+    if record.get("processing_status") != "ready":
+        raise HTTPException(status_code=409, detail="Document parsing is not ready")
+    output_dir = record.get("mineru_output_dir")
+    if not output_dir:
+        raise HTTPException(status_code=404, detail="Parsed output is not available")
+    mineru_root = (BACKEND_RUNS_ROOT / "mineru").resolve()
+    root = Path(output_dir).resolve()
+    if root == mineru_root or not root.is_relative_to(mineru_root):
+        raise HTTPException(status_code=404, detail="Parsed output is not available")
+    names = ("structured_content.json",) if artifact == "json" else ("markdown.md", "*.md")
+    for name in names:
+        for candidate in sorted(root.rglob(name)):
+            resolved = candidate.resolve()
+            if resolved.is_file() and resolved.is_relative_to(root):
+                return resolved
+    raise HTTPException(status_code=404, detail="Parsed output is not available")
+
+
+def read_parsed_artifact(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise HTTPException(status_code=404, detail="Parsed output cannot be read") from exc
+
+
+def read_parsed_json(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(read_parsed_artifact(path))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Parsed JSON is invalid") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("pages"), list):
+        raise HTTPException(status_code=422, detail="Parsed JSON has no page layout")
+    return data
 
 
 def session_uses_mineru(session_id: str) -> bool:
@@ -1442,6 +1487,61 @@ async def preview_file(file_name: str, session_id: str = Query("default")) -> Pl
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="文件不存在。")
     return PlainTextResponse(read_document_snippet(file_path, limit=20000))
+
+
+@app.get("/api/files/{file_name}/layout")
+def get_file_layout(
+    file_name: str, session_id: str = Query("default"), page: int = Query(1, ge=1)
+) -> dict[str, Any]:
+    data = read_parsed_json(parsed_artifact_path(session_id, file_name, "json"))
+    page_data = next(
+        (
+            item for index, item in enumerate(data["pages"])
+            if isinstance(item, dict) and item.get("page_idx", index) == page - 1
+        ),
+        None,
+    )
+    if page_data is None:
+        raise HTTPException(status_code=404, detail="Page layout is not available")
+    blocks = []
+    page_blocks = page_data.get("blocks", [])
+    if not isinstance(page_blocks, list):
+        raise HTTPException(status_code=422, detail="Parsed page layout is invalid")
+    for block in page_blocks:
+        if not isinstance(block, dict):
+            continue
+        parts = [block]
+        for key, block_type in (("captions", "caption"), ("footnotes", "footnote")):
+            children = block.get(key, [])
+            if isinstance(children, list):
+                parts.extend({**child, "type": block_type} for child in children if isinstance(child, dict))
+        for part in parts:
+            bbox = part.get("bbox")
+            if (
+                isinstance(bbox, list) and len(bbox) == 4
+                and all(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1 for value in bbox)
+                and bbox[0] < bbox[2] and bbox[1] < bbox[3]
+            ):
+                blocks.append({"type": str(part.get("type") or "text"), "bbox": bbox})
+    return {"file_name": file_name, "page": page, "blocks": blocks}
+
+
+@app.get("/api/files/{file_name}/parsed")
+def get_file_parsed_output(
+    file_name: str,
+    session_id: str = Query("default"),
+    format: Literal["markdown", "json"] = Query("markdown"),
+) -> dict[str, str]:
+    path = parsed_artifact_path(session_id, file_name, format)
+    content = (
+        json.dumps(read_parsed_json(path), ensure_ascii=False, indent=2)
+        if format == "json" else read_parsed_artifact(path)
+    )
+    relative = path.parent.relative_to((BACKEND_RUNS_ROOT / "mineru").resolve())
+    return {
+        "content": content,
+        "image_base_url": f"/api/action-images/{quote(relative.as_posix(), safe='/')}/",
+    }
 
 
 @app.post("/api/files/{file_name}/retry")

@@ -1,4 +1,4 @@
-import type { AgentType, ChatEvent, Message, ModelConfig, WorkspaceFile } from "./types";
+import type { AgentType, ChatEvent, Message, ModelConfig, OcrLayout, ParsedOutput, ParsedOutputFormat, WorkspaceFile } from "./types";
 import type { ConversationHistoryItem } from "./history";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8008";
@@ -92,6 +92,30 @@ export async function fetchWorkspaceFiles(sessionId: string): Promise<WorkspaceF
   }
 }
 
+export async function fetchFileLayout(
+  sessionId: string,
+  fileName: string,
+  page: number,
+  signal: AbortSignal,
+): Promise<OcrLayout> {
+  const url = new URL(`${API_BASE}/api/files/${encodeURIComponent(fileName)}/layout`);
+  url.searchParams.set("session_id", sessionId);
+  url.searchParams.set("page", String(page));
+  return expectJson<OcrLayout>(await fetch(url, { signal }));
+}
+
+export async function fetchParsedOutput(
+  sessionId: string,
+  fileName: string,
+  format: ParsedOutputFormat,
+  signal: AbortSignal,
+): Promise<ParsedOutput> {
+  const url = new URL(`${API_BASE}/api/files/${encodeURIComponent(fileName)}/parsed`);
+  url.searchParams.set("session_id", sessionId);
+  url.searchParams.set("format", format);
+  return expectJson<ParsedOutput>(await fetch(url, { signal }));
+}
+
 export async function uploadWorkspaceFiles(
   sessionId: string,
   files: File[],
@@ -109,27 +133,6 @@ export async function uploadWorkspaceFiles(
     });
     const payload = await expectJson<{ files: WorkspaceFile[] }>(response);
     return payload.files;
-  } catch (error) {
-    throw normalizeError(error);
-  }
-}
-
-export async function importWorkspaceFilesFromPaths(
-  sessionId: string,
-  paths: string[],
-): Promise<{ files: WorkspaceFile[]; imported: string[]; errors: string[] }> {
-  try {
-    const response = await fetch(`${API_BASE}/api/files/from-paths`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session_id: sessionId,
-        paths,
-      }),
-    });
-    return expectJson<{ files: WorkspaceFile[]; imported: string[]; errors: string[] }>(response);
   } catch (error) {
     throw normalizeError(error);
   }

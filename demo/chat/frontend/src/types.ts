@@ -42,6 +42,19 @@ export type WorkspaceFile = {
   viewer_type?: string | null;
 };
 
+export type OcrLayout = {
+  file_name: string;
+  page: number;
+  blocks: Array<{ type: string; bbox: number[] }>;
+};
+
+export type ParsedOutputFormat = "markdown" | "json";
+
+export type ParsedOutput = {
+  content: string;
+  image_base_url: string;
+};
+
 export type ChatEvent =
   | { type: "meta"; model: string; mode?: "chat" | "docpilot" }
   | {

@@ -20,8 +20,8 @@ import {
   deleteConversationHistory,
   discoverModels,
   fetchConversationHistory,
+  fetchFileLayout,
   fetchWorkspaceFiles,
-  importWorkspaceFilesFromPaths,
   retryWorkspaceFile,
   saveConversationHistory,
   streamChat,
@@ -35,8 +35,11 @@ import {
   upsertConversationHistory,
   type ConversationHistoryItem,
 } from "./history";
-import { collectAnswerEvidenceLocators } from "./evidence";
-import type { AgentType, Message, ModelConfig, WorkspaceFile } from "./types";
+import { collectAnswerEvidenceLocators, type EvidenceLocator } from "./evidence";
+import { OcrOverlay, ParsedDocumentOutput } from "./ParsedDocument";
+import { OCR_CATEGORIES, ocrCategory } from "./parse";
+import { WorkspaceSelect } from "./WorkspaceSelect";
+import type { AgentType, Message, ModelConfig, OcrLayout, WorkspaceFile } from "./types";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -430,6 +433,7 @@ export default function App() {
   const [activeFile, setActiveFile] = useState<WorkspaceFile | null>(null);
   const [viewer, setViewer] = useState<ViewerState>(EMPTY_VIEWER);
   const [viewerQuery, setViewerQuery] = useState("");
+  const [isViewerSearchOpen, setIsViewerSearchOpen] = useState(false);
   const [activeViewerQuery, setActiveViewerQuery] = useState("");
   const [isSearchingDocument, setIsSearchingDocument] = useState(false);
   const [searchResultCount, setSearchResultCount] = useState(0);
@@ -446,15 +450,16 @@ export default function App() {
   );
   const [pdfViewportWidth, setPdfViewportWidth] = useState(0);
   const [pdfSearchMatches, setPdfSearchMatches] = useState<PdfSearchMatch[]>([]);
+  const [showOcr, setShowOcr] = useState(true);
+  const [ocrLayout, setOcrLayout] = useState<OcrLayout | null>(null);
+  const [ocrLayoutError, setOcrLayoutError] = useState("");
   const [activeEvidenceIndex, setActiveEvidenceIndex] = useState(-1);
+  const [activeEvidenceMessageId, setActiveEvidenceMessageId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const [chatPanelWidth, setChatPanelWidth] = useState<number | null>(null);
   const [hasManualResize, setHasManualResize] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [uploadMode, setUploadMode] = useState<"local" | "server">("local");
-  const [serverPathInput, setServerPathInput] = useState("");
   const [workspaceSelection, setWorkspaceSelection] = useState("");
   const [lastAgentTrace, setLastAgentTrace] = useState<Array<Record<string, unknown>>>([]);
   const [lastAgentState, setLastAgentState] = useState<Record<string, unknown> | null>(null);
@@ -466,11 +471,12 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const viewerBodyRef = useRef<HTMLDivElement | null>(null);
+  const viewerSearchRef = useRef<HTMLDivElement | null>(null);
   const pdfViewportRef = useRef<HTMLDivElement | null>(null);
   const workspaceShellRef = useRef<HTMLDivElement | null>(null);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
   const settingsDropdownRef = useRef<HTMLDivElement | null>(null);
-  const workspaceImportRef = useRef<HTMLDivElement | null>(null);
+  const workspaceFileInputRef = useRef<HTMLInputElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const searchRequestIdRef = useRef(0);
   const modelDiscoveryRequestIdRef = useRef(0);
@@ -709,8 +715,8 @@ export default function App() {
         setIsSettingsOpen(false);
         setIsAgentMenuOpen(false);
       }
-      if (!workspaceImportRef.current?.contains(target)) {
-        setIsImportOpen(false);
+      if (!viewerSearchRef.current?.contains(target)) {
+        setIsViewerSearchOpen(false);
       }
     }
 
@@ -1024,35 +1030,6 @@ export default function App() {
     void attachChatFiles(Array.from(event.dataTransfer.files));
   }
 
-  async function handleServerPathImport() {
-    const paths = serverPathInput
-      .split("\n")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    if (!paths.length) {
-      setErrorText("请至少输入一个服务器文件路径。");
-      return;
-    }
-
-    setErrorText("");
-    try {
-      const result = await importWorkspaceFilesFromPaths(workspaceSessionId, paths);
-      setWorkspaceFiles(result.files);
-      if (result.errors.length > 0) {
-        setErrorText(result.errors.join("\n"));
-      }
-      setServerPathInput("");
-      if (result.files.length > 0) {
-        const firstImported = result.files.find((file) => result.imported.includes(file.name));
-        if (firstImported) {
-          await openViewer(firstImported);
-        }
-      }
-    } catch (error) {
-      setErrorText(String(error));
-    }
-  }
-
   async function openViewer(file: WorkspaceFile, preserveEvidence = false) {
     const sourceUrl = toAbsoluteUrl(file.download_url);
     if (!preserveEvidence) {
@@ -1063,6 +1040,7 @@ export default function App() {
     setWorkspaceSelection(file.name);
     setViewerZoom(1);
     setViewerQuery("");
+    setIsViewerSearchOpen(false);
     setPdfPageNumber(1);
     if (viewer.sourceUrl !== sourceUrl) {
       setPdfPageCount(0);
@@ -1611,6 +1589,26 @@ export default function App() {
     [workspaceFiles, workspaceSelection],
   );
 
+  const isOcrReady = viewer.mode === "pdf" && activeFile?.processing_status === "ready";
+  const visibleOcrLayout = showOcr && isOcrReady && ocrLayout?.file_name === activeFile?.name
+    && ocrLayout?.page === pdfDisplayedPageNumber ? ocrLayout : null;
+  const visibleOcrCategories = [...new Set(visibleOcrLayout?.blocks.map((block) => ocrCategory(block.type)) ?? [])];
+
+  useEffect(() => {
+    setOcrLayout(null);
+    setOcrLayoutError("");
+    if (!showOcr || !isOcrReady || !activeFile) return;
+    const controller = new AbortController();
+    void fetchFileLayout(workspaceSessionId, activeFile.name, pdfDisplayedPageNumber, controller.signal)
+      .then((layout) => {
+        if (!controller.signal.aborted) setOcrLayout(layout);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setOcrLayoutError("OCR layout is not available for this document.");
+      });
+    return () => controller.abort();
+  }, [showOcr, isOcrReady, activeFile?.name, activeFile?.modified_at, workspaceSessionId, pdfDisplayedPageNumber]);
+
   const latestAssistantMessageId = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "assistant") {
@@ -1624,12 +1622,15 @@ export default function App() {
     () => buildAgentStepViews(lastAgentTrace, Boolean(lastAgentState?.done)),
     [lastAgentTrace, lastAgentState],
   );
-  const answerEvidence = useMemo(
-    () => lastResponseMode === "docpilot"
-      ? collectAnswerEvidenceLocators(lastAgentState)
-      : [],
-    [lastAgentState, lastResponseMode],
-  );
+  const answerEvidence = useMemo(() => {
+    const message = messages.find((item) => item.id === activeEvidenceMessageId);
+    if (!message || message.role !== "assistant") return [];
+    const isLatest = message.id === latestAssistantMessageId;
+    const mode = isLatest ? lastResponseMode : message.responseMode;
+    return mode === "docpilot"
+      ? collectAnswerEvidenceLocators(isLatest ? lastAgentState : (message.agentState ?? null))
+      : [];
+  }, [activeEvidenceMessageId, messages, latestAssistantMessageId, lastAgentState, lastResponseMode]);
   const activeEvidence = activeEvidenceIndex >= 0
     ? answerEvidence[activeEvidenceIndex] ?? null
     : null;
@@ -1647,6 +1648,7 @@ export default function App() {
 
   useEffect(() => {
     setActiveEvidenceIndex(-1);
+    setActiveEvidenceMessageId(null);
   }, [activeHistoryId]);
 
   useEffect(() => {
@@ -1664,12 +1666,16 @@ export default function App() {
     }
   }, [activeEvidence, activeEvidenceIndex, pdfDisplayedPageNumber, viewer.mode, viewer.sourceUrl]);
 
-  async function showEvidence(index: number) {
-    if (answerEvidence.length === 0) {
+  async function showEvidence(
+    index: number,
+    items: EvidenceLocator[] = answerEvidence,
+    messageId: string | null = activeEvidenceMessageId,
+  ) {
+    if (items.length === 0) {
       return;
     }
-    const wrappedIndex = (index + answerEvidence.length) % answerEvidence.length;
-    const evidence = answerEvidence[wrappedIndex];
+    const wrappedIndex = (index + items.length) % items.length;
+    const evidence = items[wrappedIndex];
     const file = workspaceFiles.find((item) => item.doc_id === evidence.docId);
     if (!file) {
       setErrorText(`Evidence document is no longer available in Workspace: ${evidence.docId}`);
@@ -1680,15 +1686,16 @@ export default function App() {
       await openViewer(file, true);
     }
     setPdfPageNumber(evidence.page);
+    setActiveEvidenceMessageId(messageId);
     setActiveEvidenceIndex(wrappedIndex);
   }
 
-  function toggleEvidence() {
-    if (activeEvidenceIndex >= 0) {
+  function toggleEvidence(messageId: string, items: EvidenceLocator[]) {
+    if (activeEvidenceMessageId === messageId && activeEvidenceIndex >= 0) {
       setActiveEvidenceIndex(-1);
       return;
     }
-    void withViewportLock(() => showEvidence(0));
+    void withViewportLock(() => showEvidence(0, items, messageId));
   }
 
   function shouldRenderEvidence(index: number, page: number) {
@@ -1718,9 +1725,8 @@ export default function App() {
       return;
     }
 
-    const container = viewerBodyRef.current;
     const pdfScroller = pdfViewportRef.current;
-    if (!container || !pdfScroller) {
+    if (!pdfScroller) {
       return;
     }
 
@@ -1728,7 +1734,7 @@ export default function App() {
       const styles = window.getComputedStyle(pdfScroller);
       const width = Math.max(
         0,
-        container.clientWidth -
+        pdfScroller.clientWidth -
           Number.parseFloat(styles.paddingLeft) -
           Number.parseFloat(styles.paddingRight),
       );
@@ -1737,7 +1743,7 @@ export default function App() {
 
     updateSize();
     const observer = new ResizeObserver(updateSize);
-    observer.observe(container);
+    observer.observe(pdfScroller);
     return () => observer.disconnect();
   }, [viewer.mode, viewer.sourceUrl]);
 
@@ -1912,6 +1918,11 @@ export default function App() {
     if (event.key === "Enter") {
       event.preventDefault();
       void withViewportLock(commitViewerSearch);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setIsViewerSearchOpen(false);
+      viewerSearchRef.current?.querySelector<HTMLButtonElement>(".viewer-search-trigger")?.focus();
     }
   }
 
@@ -2139,6 +2150,30 @@ export default function App() {
                 isSending &&
                 !message.content.trim() &&
                 messageAgentSteps.length === 0;
+              const messageEvidence = messageMode === "docpilot"
+                ? collectAnswerEvidenceLocators(messageState) : [];
+              const isShowingMessageEvidence = activeEvidenceMessageId === message.id && activeEvidenceIndex >= 0;
+              const messageEvidenceButton = messageMode === "docpilot" && message.content.trim() ? (
+                <button
+                  className={`secondary answer-evidence-button ${isShowingMessageEvidence ? "active" : ""}`}
+                  type="button"
+                  onClick={() => toggleEvidence(message.id, messageEvidence)}
+                  disabled={messageEvidence.length === 0}
+                  aria-label={isShowingMessageEvidence ? "Hide answer evidence" : "Show answer evidence"}
+                  aria-pressed={isShowingMessageEvidence}
+                  title={messageEvidence.length
+                    ? isShowingMessageEvidence ? "Hide supporting highlights in the document" : `Locate ${messageEvidence.length} supporting evidence item(s) in the document`
+                    : "No evidence for this answer"}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M13 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5M13 3l6 6M13 3v6h6M7 8h2M7 12h3" />
+                    <circle cx="16" cy="16" r="4" />
+                    <path d="m19 19 3 3" />
+                  </svg>
+                  <span>{messageEvidence.length === 0 ? "No evidence" : isShowingMessageEvidence ? "Hide evidence" : "View evidence"}</span>
+                  {messageEvidence.length > 0 ? <span className="answer-evidence-count">{messageEvidence.length}</span> : null}
+                </button>
+              ) : null;
 
               return (
                 <div className="message-entry" key={message.id}>
@@ -2393,7 +2428,10 @@ export default function App() {
                           </div>
 
                           <div className={`process-answer-block ${message.content.trim() ? "visible" : ""}`}>
-                            <div className="agent-step-block-label">Answer</div>
+                            <div className="process-answer-header">
+                              <div className="agent-step-block-label">Answer</div>
+                              {messageEvidenceButton}
+                            </div>
                             <div className="markdown-body">
                               <ReactMarkdown>{message.content}</ReactMarkdown>
                             </div>
@@ -2413,9 +2451,15 @@ export default function App() {
                           </div>
                         </div>
                       ) : (
-                        <div className="markdown-body">
-                          <ReactMarkdown>{message.content}</ReactMarkdown>
-                        </div>
+                        <>
+                          {messageEvidenceButton ? <div className="process-answer-header">
+                            <div className="agent-step-block-label">Answer</div>
+                            {messageEvidenceButton}
+                          </div> : null}
+                          <div className="markdown-body">
+                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                          </div>
+                        </>
                       )}
                     </>
                   ) : (
@@ -2731,72 +2775,14 @@ export default function App() {
             </div>
             <div className="workspace-header-actions">
               <button
-                className={`secondary mini-button icon-button workspace-evidence-button ${activeEvidence ? "active" : ""}`}
+                className="secondary mini-button"
                 type="button"
-                onClick={toggleEvidence}
-                disabled={answerEvidence.length === 0}
-                aria-label={activeEvidence ? "Hide answer evidence" : "Show answer evidence"}
-                aria-pressed={Boolean(activeEvidence)}
-                title={
-                  answerEvidence.length > 0
-                    ? activeEvidence
-                      ? "Hide answer evidence"
-                      : `Show ${answerEvidence.length} answer evidence item(s)`
-                    : "No evidence for the latest answer"
-                }
+                onClick={() => workspaceFileInputRef.current?.click()}
+                title="Choose local files"
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="7" />
-                  <circle cx="12" cy="12" r="2" />
-                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-                </svg>
-                {answerEvidence.length > 0 ? (
-                  <span className="workspace-evidence-count">{answerEvidence.length}</span>
-                ) : null}
+                Import
               </button>
-              <div className="workspace-import-control" ref={workspaceImportRef}>
-                <button
-                  className={`secondary mini-button ${isImportOpen ? "active" : ""}`}
-                  type="button"
-                  onClick={() => setIsImportOpen((current) => !current)}
-                  aria-expanded={isImportOpen}
-                >
-                  Import
-                </button>
-                {isImportOpen ? <div className="workspace-import-popover">
-                  <div className="upload-mode-tabs">
-                    <button
-                      className={uploadMode === "local" ? "active" : ""}
-                      onClick={() => setUploadMode("local")}
-                      type="button"
-                    >
-                      Local
-                    </button>
-                    <button
-                      className={uploadMode === "server" ? "active" : ""}
-                      onClick={() => setUploadMode("server")}
-                      type="button"
-                    >
-                      Server
-                    </button>
-                  </div>
-                  {uploadMode === "local" ? (
-                    <input type="file" multiple onChange={handleUpload} />
-                  ) : (
-                    <div className="server-path-inline">
-                      <textarea
-                        rows={3}
-                        value={serverPathInput}
-                        onChange={(event) => setServerPathInput(event.target.value)}
-                        placeholder={"/data/path/sample.pdf\n/data/path/example.md"}
-                      />
-                      <button type="button" className="secondary" onClick={() => void handleServerPathImport()}>
-                        Import
-                      </button>
-                    </div>
-                  )}
-                </div> : null}
-              </div>
+              <input ref={workspaceFileInputRef} type="file" multiple hidden onChange={handleUpload} />
               <button
                 className="secondary mini-button icon-button"
                 onClick={() => void refreshFiles()}
@@ -2815,33 +2801,33 @@ export default function App() {
 
           <div className="workspace-doc-controls">
             <div className="workspace-file-toolbar">
-              <select
+              <WorkspaceSelect
                 className="workspace-file-select"
+                label="Workspace document"
+                title={selectedWorkspaceFile?.name ?? "Import a document to get started"}
+                disabled={workspaceFiles.length === 0}
                 value={selectedWorkspaceFile?.name ?? ""}
-                onChange={(event) => {
-                  const nextFile = workspaceFiles.find((file) => file.name === event.target.value);
+                options={workspaceFiles.map((file) => ({ value: file.name, label: file.name }))}
+                onChange={(value) => {
+                  const nextFile = workspaceFiles.find((file) => file.name === value);
                   if (nextFile) {
                     void withViewportLock(() => openViewer(nextFile));
                   }
                 }}
-              >
-                {workspaceFiles.length === 0 ? <option value="">No files</option> : null}
-                {workspaceFiles.map((file) => (
-                  <option key={file.name} value={file.name}>
-                    {file.name}
-                  </option>
-                ))}
-              </select>
+              />
               <span
                 className={`workspace-file-meta status-${selectedWorkspaceFile?.processing_status ?? "none"} ${
                   selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default"
                     ? "retryable"
                     : ""
                 }`}
-                role={selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default" ? "button" : undefined}
+                role={selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default" ? "button" : "status"}
                 tabIndex={selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default" ? 0 : undefined}
                 title={selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default" ? "Click to retry MinerU" : undefined}
-                aria-label={selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default" ? `Retry MinerU for ${selectedWorkspaceFile.name}` : undefined}
+                aria-label={selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default"
+                  ? `Retry MinerU for ${selectedWorkspaceFile.name}`
+                  : selectedWorkspaceFile ? `${formatBytes(selectedWorkspaceFile.size)} · ${statusLabel(selectedWorkspaceFile)}` : "No file"}
+                aria-busy={selectedWorkspaceFile?.processing_status === "processing"}
                 onClick={() => {
                   if (selectedWorkspaceFile?.processing_status === "failed" && currentAgent === "default") {
                     void handleRetry(selectedWorkspaceFile.name);
@@ -2859,7 +2845,7 @@ export default function App() {
                 }}
               >
                 {selectedWorkspaceFile
-                  ? `${formatBytes(selectedWorkspaceFile.size)} · ${statusLabel(selectedWorkspaceFile)}`
+                  ? formatBytes(selectedWorkspaceFile.size)
                   : "No file"}
               </span>
               <button
@@ -2894,56 +2880,6 @@ export default function App() {
           </div>
 
           <div className="viewer-toolbar">
-            <div className="viewer-search-row">
-              <input
-                value={viewerQuery}
-                onChange={(event) => setViewerQuery(event.target.value)}
-                onKeyDown={handleViewerSearchKeyDown}
-                placeholder="Search in current document"
-              />
-              <button
-                className="secondary viewer-icon-button"
-                onClick={() => void withViewportLock(commitViewerSearch)}
-                aria-label="Search document"
-                title="Search document"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6" />
-                  <path d="m16 16 4 4" />
-                </svg>
-              </button>
-              <div className="viewer-search-status">
-                {isSearchingDocument
-                  ? "Searching..."
-                  : searchResultCount > 0
-                    ? `${activeSearchIndex + 1} / ${searchResultCount}`
-                    : activeViewerQuery
-                      ? "0 results"
-                      : ""}
-              </div>
-              <button
-                className="secondary viewer-icon-button"
-                onClick={goToPreviousSearchResult}
-                disabled={searchResultCount <= 0}
-                aria-label="Previous search result"
-                title="Previous search result"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m7 14 5-5 5 5" />
-                </svg>
-              </button>
-              <button
-                className="secondary viewer-icon-button"
-                onClick={goToNextSearchResult}
-                disabled={searchResultCount <= 0}
-                aria-label="Next search result"
-                title="Next search result"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m7 10 5 5 5-5" />
-                </svg>
-              </button>
-            </div>
             <div className="viewer-control-row">
               <div className="viewer-pagination" aria-label="PDF pagination controls">
                 <button
@@ -3001,7 +2937,71 @@ export default function App() {
                   </svg>
                 </button>
               </div>
+              <div className="viewer-search-control" ref={viewerSearchRef}>
+                <button
+                  className={`secondary viewer-icon-button viewer-search-trigger ${isViewerSearchOpen || activeViewerQuery ? "active" : ""}`}
+                  type="button"
+                  onClick={() => setIsViewerSearchOpen((current) => !current)}
+                  aria-label="Search document"
+                  aria-expanded={isViewerSearchOpen}
+                  aria-controls="document-search-panel"
+                  title="Search document"
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" />
+                </svg></button>
+                {isViewerSearchOpen ? <div id="document-search-panel" className="viewer-search-row" role="search" aria-label="Document search">
+                  <input
+                    autoFocus
+                    value={viewerQuery}
+                    onChange={(event) => setViewerQuery(event.target.value)}
+                    onKeyDown={handleViewerSearchKeyDown}
+                    placeholder="Search in current document"
+                    aria-label="Search in current document"
+                  />
+                  <button
+                    className="secondary viewer-icon-button"
+                    type="button"
+                    onClick={() => void withViewportLock(commitViewerSearch)}
+                    aria-label="Find in document"
+                    title="Find in document"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" />
+                  </svg></button>
+                  <div className="viewer-search-status" role="status">
+                    {isSearchingDocument ? "Searching..."
+                      : searchResultCount > 0 ? `${activeSearchIndex + 1} / ${searchResultCount}`
+                      : activeViewerQuery ? "0 results" : ""}
+                  </div>
+                  <button
+                    className="secondary viewer-icon-button"
+                    type="button"
+                    onClick={goToPreviousSearchResult}
+                    disabled={searchResultCount <= 0}
+                    aria-label="Previous search result"
+                    title="Previous search result"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 14 5-5 5 5" /></svg></button>
+                  <button
+                    className="secondary viewer-icon-button"
+                    type="button"
+                    onClick={goToNextSearchResult}
+                    disabled={searchResultCount <= 0}
+                    aria-label="Next search result"
+                    title="Next search result"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" /></svg></button>
+                </div> : null}
+              </div>
               <div className="viewer-zoom-controls" aria-label="Document zoom controls">
+                {viewer.mode === "pdf" ? <label className="ocr-toggle" title="Show OCR highlights">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={showOcr}
+                    disabled={!isOcrReady}
+                    onChange={(event) => setShowOcr(event.target.checked)}
+                    aria-label="Show OCR highlights"
+                  />
+                  OCR
+                </label> : null}
                 <button
                   className="secondary viewer-icon-button"
                   onClick={zoomOut}
@@ -3037,6 +3037,16 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {viewer.mode === "pdf" && showOcr ? <div className="ocr-legend" aria-label="OCR region types" role="status">
+            {!isOcrReady ? <span>OCR highlights available when ready</span>
+              : ocrLayoutError ? <span>{ocrLayoutError}</span>
+              : !visibleOcrLayout ? <span>Loading OCR layout...</span>
+              : visibleOcrCategories.length === 0 ? <span>No OCR regions on this page</span>
+              : visibleOcrCategories.map((category) => <span className={`ocr-${category}`} key={category}>
+                <i aria-hidden="true" />{OCR_CATEGORIES[category]}
+              </span>)}
+          </div> : null}
 
           <div
             className={`viewer-surface ${viewer.mode === "pdf" ? "pdf-active" : ""} ${viewer.mode === "image" ? "image-active" : ""}`}
@@ -3116,6 +3126,7 @@ export default function App() {
                         });
                       }}
                     >
+                      <OcrOverlay layout={visibleOcrLayout} page={pdfDisplayedPageNumber} />
                       <div className="pdf-search-overlay" aria-hidden="true">
                         {pdfSearchMatches.map((match, index) =>
                           match.pageNumber === pdfDisplayedPageNumber ? (
@@ -3175,6 +3186,7 @@ export default function App() {
                             setPdfPendingPageNumber(null);
                           }}
                         >
+                          <OcrOverlay layout={visibleOcrLayout} page={pdfPendingPageNumber} />
                           <div className="pdf-search-overlay">
                             {pdfSearchMatches.map((match, index) =>
                               match.pageNumber === pdfPendingPageNumber ? (
@@ -3253,6 +3265,11 @@ export default function App() {
               </div>
             ) : null}
           </div>
+          {viewer.mode === "pdf" && activeFile ? <ParsedDocumentOutput
+            key={`${workspaceSessionId}-${activeFile.name}-${activeFile.modified_at}-${activeFile.processing_status}`}
+            file={activeFile}
+            sessionId={workspaceSessionId}
+          /> : null}
         </section>
         </main>
       </div>
