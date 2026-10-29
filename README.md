@@ -6,7 +6,7 @@
 </h1>
 
 [![arXiv](https://img.shields.io/badge/arXiv-2610.21327-B31B1B.svg)](https://arxiv.org/abs/2610.21327)
-[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-FFD21E.svg)](https://huggingface.co/SetonLiang2/DocPilot)
+[![DocPilot-4B](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-DocPilot--4B-FFD21E.svg)](https://huggingface.co/SetonLiang2/DocPilot)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB.svg)](https://www.python.org/)
 [![Interface](https://img.shields.io/badge/Interface-React%20%2B%20FastAPI-0F766E.svg)](./demo/chat/)
 
@@ -44,16 +44,12 @@ The framework combines two components:
 
 ### WebUI (Agentic)
 
-<video src="./assets/DocPilot-agentic-product.mp4" controls width="100%"></video>
-
 [▶ Watch the Agentic demo](./assets/DocPilot-agentic-product.mp4)
 
 - This demo lets you upload documents, ask questions, and follow DocPilot's reasoning, tool execution, and source evidence in a chat interface.
 - See [demo/chat](./demo/chat/README_ZH.md) for setup, then run `./demo/chat/start.sh` and open [the WebUI](http://127.0.0.1:5173).
 
 ### WebUI (Explainable)
-
-<video src="./assets/DocPilot-interaction-flight-product.mp4" controls width="100%"></video>
 
 [▶ Watch the Explainable demo](./assets/DocPilot-interaction-flight-product.mp4)
 
