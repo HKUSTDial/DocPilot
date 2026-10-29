@@ -31,6 +31,34 @@ The framework combines two components:
 
 ## 📰News
 
+- [2026.10] DocPilot's [paper](https://arxiv.org/abs/2610.21327), [code](https://github.com/HKUSTDial/DocPilot), [model](https://huggingface.co/SetonLiang2/DocPilot) are released!
+
+
+
+
+## 💬 Interactive Demo
+
+<p align="center">
+  <img src="assets/system.png" alt="DocPilot interactive demo with agent action traces and document viewing." width="100%" />
+</p>
+
+### WebUI (Agentic)
+
+<video src="./assets/DocPilot-agentic-product.mp4" controls width="100%"></video>
+
+[▶ Watch the Agentic demo](./assets/DocPilot-agentic-product.mp4)
+
+- This demo lets you upload documents, ask questions, and follow DocPilot's reasoning, tool execution, and source evidence in a chat interface.
+- See [demo/chat](./demo/chat/README_ZH.md) for setup, then run `./demo/chat/start.sh` and open [the WebUI](http://127.0.0.1:5173).
+
+### WebUI (Explainable)
+
+<video src="./assets/DocPilot-interaction-flight-product.mp4" controls width="100%"></video>
+
+[▶ Watch the Explainable demo](./assets/DocPilot-interaction-flight-product.mp4)
+
+- This demo visualizes DocPilot's evidence-seeking process as an animated flight across document pages, connecting agent actions to their supporting evidence.
+- See [Flight Lab in demo/chat](./demo/chat/README_ZH.md) for setup, then run `./demo/chat/start.sh` and open [Flight Lab](http://127.0.0.1:5173/flight.html).
 
 ## 🏗️ Framework
 
@@ -238,31 +266,6 @@ python -m app \
 
 By default, agent logs, result files, and temporary visual evidence are written under `runs/logs/`, `runs/outputs/`, and `runs/.workspace/`.
 
-## 💬 Interactive Demo
-
-The demo provides conversation history, model and agent selection, document upload, MinerU preprocessing, PDF viewing, action traces, and evidence localization.
-
-Install the backend and frontend dependencies:
-
-```bash
-python -m pip install -r demo/chat/backend/requirements.txt
-cd demo/chat/frontend
-npm ci
-cd ../../..
-```
-
-Start both services from the project root:
-
-```bash
-./demo/chat/start.sh
-```
-
-Open `http://127.0.0.1:5173`. The API listens on `http://127.0.0.1:8008`.
-
-- **Default agent** runs the DocPilot pipeline and preprocesses uploaded PDFs with MinerU.
-- **Chat agent** sends selected PDF pages, images, or text directly to a multimodal OpenAI-compatible model.
-
-Runtime uploads, OCR output, workspace state, and conversation history remain local under `demo/chat/backend/runs/` and `demo/chat/workspace/`. See the [demo documentation](./demo/chat/README_ZH.md) for configuration details.
 
 ## 🤝 Acknowledgement
 
@@ -270,3 +273,17 @@ Runtime uploads, OCR output, workspace state, and conversation history remain lo
 - **Sources of Training Data:**
   - **Single-ability:** [DocSeeker](https://github.com/yh-hust/DocSeeker), [HotpotQA](https://hotpotqa.github.io/), [FinQA](https://github.com/czyssrs/FinQA), [ChartQAPro](https://github.com/vis-nlp/ChartQAPro), and [InfographicVQA](https://site.docvqa.org/datasets/infographicvqa)
   - **Multi-ability:** [LongDocURL](https://github.com/dengc2023/LongDocURL), [DUDE](https://github.com/duchallenge-team/dude), [MADQA](https://huggingface.co/datasets/OxRML/MADQA), and [MMDocRAG](https://github.com/MMDocRAG/MMDocRAG)
+
+
+## 📝Citation
+
+If you find this repository useful, please cite:
+
+```bibtex
+@article{liang2026docpilot,
+  title={DocPilot: Interactive Agent Orchestration and Training for Long Visual Document Understanding},
+  author={Liang, Zhuowen and Lin, Xiaotian and Luo, Yuyu and Wang, Haixun and Tang, Nan},
+  journal={arXiv preprint arXiv:2610.21327},
+  year={2026}
+}
+```
