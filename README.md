@@ -39,7 +39,7 @@ The framework combines two components:
 ## 💬 Interactive Demo
 
 <p align="center">
-  <img src="assets/system.png" alt="DocPilot interactive demo with agent action traces and document viewing." width="100%" />
+  <img src="assets/system.png" alt="DocPilot interactive demo with agent action traces and document viewing." width="100%"/>
 </p>
 
 ### WebUI (Agentic)
@@ -208,7 +208,7 @@ mineru-kit models verify \
   --vlm-engine llama-cpp
 ```
 
-The models are cached under `~/.mineru/models/` and reused by subsequent runs.
+The models are cached under `~/.mineru/models/` and reused by subsequent runs
 
 ## 🚀 Quick Start
 
