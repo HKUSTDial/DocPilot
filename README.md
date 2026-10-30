@@ -44,14 +44,14 @@ The framework combines two components:
 
 ### WebUI (Agentic)
 
-[▶ Watch the Agentic demo](./assets/DocPilot-agentic-product.mp4)
+https://github.com/user-attachments/assets/fe0f5255-a8bc-4da6-9366-45a8192797ce
 
 - This demo lets you upload documents, ask questions, and follow DocPilot's reasoning, tool execution, and source evidence in a chat interface.
 - See [demo/chat](./demo/chat/README_ZH.md) for setup, then run `./demo/chat/start.sh` and open [the WebUI](http://127.0.0.1:5173).
 
 ### WebUI (Explainable)
 
-[▶ Watch the Explainable demo](./assets/DocPilot-interaction-flight-product.mp4)
+https://github.com/user-attachments/assets/5b51b844-aeb3-4730-95de-4059572fbbc4
 
 - This demo visualizes DocPilot's evidence-seeking process as an animated flight across document pages, connecting agent actions to their supporting evidence.
 - See [Flight Lab in demo/chat](./demo/chat/README_ZH.md) for setup, then run `./demo/chat/start.sh` and open [Flight Lab](http://127.0.0.1:5173/flight.html).
