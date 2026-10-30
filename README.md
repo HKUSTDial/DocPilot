@@ -42,6 +42,33 @@ The framework combines two components:
   <img src="assets/system.png" alt="DocPilot interactive demo with agent action traces and document viewing." width="100%"/>
 </p>
 
+Both WebUIs use the same backend and frontend. Install the project and demo dependencies from the repository root:
+
+```bash
+python -m pip install -e .
+python -m pip install -r demo/chat/backend/requirements.txt
+cd demo/chat/frontend
+npm ci
+cd ../../..
+```
+
+Start both services from the repository root:
+
+```bash
+./demo/chat/start.sh
+```
+
+- **Agentic WebUI:** open `http://127.0.0.1:5173`.
+- **Explainable WebUI:** open `http://127.0.0.1:5173/flight.html`.
+- **Backend API:** listens on `http://127.0.0.1:8008`.
+
+Configure the model provider, base URL, model name, and API key in the WebUI. Before uploading PDFs for preprocessing, complete the MinerU model setup described in Model Configuration below.
+
+- **Default agent** runs the DocPilot pipeline and preprocesses uploaded PDFs with MinerU.
+- **Chat agent** sends selected PDF pages, images, or text directly to a multimodal OpenAI-compatible model.
+
+Runtime uploads, OCR output, workspace state, and conversation history remain local under `demo/chat/backend/runs/` and `demo/chat/workspace/`. See the [demo documentation](./demo/chat/README_ZH.md) for configuration details.
+
 ### WebUI (Agentic)
 
 https://github.com/user-attachments/assets/fe0f5255-a8bc-4da6-9366-45a8192797ce
